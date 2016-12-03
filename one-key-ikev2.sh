@@ -57,6 +57,7 @@ __yellow(){
 
 # Install IKEV2
 function install_ikev2(){
+    start_iptables
     rootness
     disable_selinux
     get_system
@@ -73,6 +74,32 @@ function install_ikev2(){
     iptables_set
     ipsec restart
     success_info
+}
+
+function start_iptables() {
+    systemctl stop firewalld.service
+    systemctl disable firewalld.service
+    yum -y update
+    yum install iptables-services
+    cat > /etc/sysconfig/iptables<<-EOF
+# Firewall configuration written by system-config-firewall
+# Manual customization of this file is not recommended.
+*filter
+:INPUT ACCEPT [0:0]
+:FORWARD ACCEPT [0:0]
+:OUTPUT ACCEPT [0:0]
+-A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
+-A INPUT -p icmp -j ACCEPT
+-A INPUT -i lo -j ACCEPT
+-A INPUT -m state --state NEW -m tcp -p tcp --dport 22 -j ACCEPT
+-A INPUT -m state --state NEW -m tcp -p tcp --dport 80 -j ACCEPT
+-A INPUT -m state --state NEW -m tcp -p tcp --dport 3306 -j ACCEPT
+-A INPUT -j REJECT --reject-with icmp-host-prohibited
+-A FORWARD -j REJECT --reject-with icmp-host-prohibited
+COMMIT
+EOF
+    systemctl restart iptables.service
+    systemctl enable iptables.service
 }
 
 # Make sure only root can run our script
@@ -336,49 +363,12 @@ function configure_ipsec(){
 config setup
     uniqueids=never 
 
-conn iOS_cert
-    keyexchange=ikev1
-    fragmentation=yes
-    left=%defaultroute
-    leftauth=pubkey
-    leftsubnet=0.0.0.0/0
-    leftcert=server.cert.pem
-    right=%any
-    rightauth=pubkey
-    rightauth2=xauth
-    rightsourceip=10.31.2.0/24
-    rightcert=client.cert.pem
-    auto=add
-
-conn android_xauth_psk
-    keyexchange=ikev1
-    left=%defaultroute
-    leftauth=psk
-    leftsubnet=0.0.0.0/0
-    right=%any
-    rightauth=psk
-    rightauth2=xauth
-    rightsourceip=10.31.2.0/24
-    auto=add
-
-conn networkmanager-strongswan
-    keyexchange=ikev2
-    left=%defaultroute
-    leftauth=pubkey
-    leftsubnet=0.0.0.0/0
-    leftcert=server.cert.pem
-    right=%any
-    rightauth=pubkey
-    rightsourceip=10.31.2.0/24
-    rightcert=client.cert.pem
-    auto=add
-
 conn ios_ikev2
     keyexchange=ikev2
     ike=aes256-sha256-modp2048,3des-sha1-modp2048,aes256-sha1-modp2048!
     esp=aes256-sha256,3des-sha1,aes256-sha1!
     rekey=no
-    left=%defaultroute
+    left=${vps_ip}
     leftid=${vps_ip}
     leftsendcert=always
     leftsubnet=0.0.0.0/0
@@ -390,21 +380,6 @@ conn ios_ikev2
     eap_identity=%any
     dpdaction=clear
     fragmentation=yes
-    auto=add
-
-conn windows7
-    keyexchange=ikev2
-    ike=aes256-sha1-modp1024!
-    rekey=no
-    left=%defaultroute
-    leftauth=pubkey
-    leftsubnet=0.0.0.0/0
-    leftcert=server.cert.pem
-    right=%any
-    rightauth=eap-mschapv2
-    rightsourceip=10.31.2.0/24
-    rightsendcert=never
-    eap_identity=%any
     auto=add
 
 EOF
@@ -424,6 +399,14 @@ function configure_strongswan(){
         dns2 = 8.8.4.4
         nbns1 = 8.8.8.8
         nbns2 = 8.8.4.4
+        filelog {
+            /var/log/strongswan.charon.log {
+                time_format = %b %e %T
+                default = 3
+                append = no
+                flush_line = yes
+            }
+       }
 }
 include strongswan.d/*.conf
 EOF
