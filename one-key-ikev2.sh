@@ -226,7 +226,7 @@ function pre_install(){
         echo -e "[$(__green "server.pem")]:Your  key of the server cert."
         echo -e "[$(__yellow "Please copy these file to the same directory of this script before start!")]"
     else
-        echo -e "the cert_info:[$(__green "C=${my_cert_c}, O=${my_cert_o}")]"
+        echo -e "the cert_info:[$(__green "C=${my_cert_c}, O=${my_cert_o} CN=${my_cert_cn}")]"
     fi
     echo ""
     echo "Press any key to start...or Press Ctrl+C to cancel"
